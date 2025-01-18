@@ -1,10 +1,9 @@
-package cli
+package git
 
 import (
+	"aww/internal/backend"
+	"aww/internal/repository"
 	"context"
-	"dusa/internal/backend"
-	config "dusa/internal/config"
-	"dusa/internal/helpers"
 	"errors"
 	"fmt"
 	"os"
@@ -19,19 +18,19 @@ import (
 )
 
 var (
-	debug     bool
-	groups    []config.GroupTemplate
+	Debug     bool
+	groups    []*repository.Group
 	groupsMap map[string]int
 )
 
-func initialize(cmd *cli.Command) error {
+func start(cmd *cli.Command) error {
 	var err error
 
-	if debug {
+	if Debug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	groups, err = config.Load()
+	groups, err = repository.Load()
 	if err != nil {
 		return err
 	}
@@ -48,7 +47,7 @@ func initialize(cmd *cli.Command) error {
 			return fmt.Errorf("group '%s' not found", cmd.String("repo"))
 		}
 		group := groups[groupIndex]
-		groups = []config.GroupTemplate{group}
+		groups = []*repository.Group{group}
 	}
 
 	return nil
@@ -66,8 +65,8 @@ func isExist(path string) (bool, error) {
 	return true, nil
 }
 
-// addGitCmd creates a CLI command for git operations.
-func addGitCmd() *cli.Command {
+// Command creates a CLI command for git operations.
+func Command() *cli.Command {
 	return &cli.Command{
 		Name:  "git",
 		Usage: "Manage and interact with git repositories",
@@ -83,7 +82,7 @@ func addGitCmd() *cli.Command {
 				Name:  "list",
 				Usage: "List available groups",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := initialize(cmd)
+					err := start(cmd)
 					if err != nil {
 						return err
 					}
@@ -108,7 +107,7 @@ func addGitCmd() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := initialize(cmd)
+					err := start(cmd)
 					if err != nil {
 						return err
 					}
@@ -124,6 +123,7 @@ func addGitCmd() *cli.Command {
 					}
 
 					var combinedError error
+					var projectNoExist []string
 
 					sm.Start()
 
@@ -133,14 +133,14 @@ func addGitCmd() *cli.Command {
 						spinner.UpdateMessagef("%s: switching branches...", group.Name)
 
 						for _, project := range group.Projects {
-							projectDecoded, err := helpers.DecodeSSHURL(project.Url)
-							if err != nil {
-								spinner.ErrorWithMessagef("%s: failed", group.Name)
-								combinedError = fmt.Errorf("%v; failed to decode SSH URL %s: %w", combinedError, project.Url, err)
+
+							path := filepath.Join(repository.DestRepoPath, project.GetPath())
+
+							ok, _ := isExist(path)
+							if !ok {
+								projectNoExist = append(projectNoExist, project.GetPath())
 								continue
 							}
-
-							path := filepath.Join(config.RootFolder, projectDecoded.GetPath())
 							var repoBranch string
 
 							if parseRemote {
@@ -193,6 +193,10 @@ func addGitCmd() *cli.Command {
 						return combinedError
 					}
 
+					if len(projectNoExist) != 0 {
+						log.Warn().Msg("List of project that are not found:\n " + strings.Join(projectNoExist, "\n"))
+					}
+
 					log.Info().Msg("Switching branches finished ✅")
 					return nil
 				},
@@ -215,7 +219,7 @@ func addGitCmd() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := initialize(cmd)
+					err := start(cmd)
 					if err != nil {
 						return err
 					}
@@ -234,12 +238,7 @@ func addGitCmd() *cli.Command {
 
 					for _, group := range groups {
 						for _, project := range group.Projects {
-							projectDecoded, err := helpers.DecodeSSHURL(project.Url)
-							if err != nil {
-								return err
-							}
-
-							path := filepath.Join(config.RootFolder, projectDecoded.GetPath())
+							path := filepath.Join(repository.DestRepoPath, project.GetPath())
 
 							ok, err := isExist(path)
 							if err != nil {
@@ -302,7 +301,7 @@ func addGitCmd() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := initialize(cmd)
+					err := start(cmd)
 					if err != nil {
 						return err
 					}
@@ -322,19 +321,14 @@ func addGitCmd() *cli.Command {
 						spinner := sm.AddSpinner(group.Name)
 						wg.Add(1)
 
-						go func(group config.GroupTemplate, spinner *ysmrr.Spinner) {
+						go func(group *repository.Group, spinner *ysmrr.Spinner) {
 							spinner.UpdateMessage(group.Name + " processing...")
 							defer wg.Done()
 							defer spinner.CompleteWithMessage(group.Name + " done!")
 
 							for _, project := range group.Projects {
-								projectDecoded, err := helpers.DecodeSSHURL(project.Url)
-								if err != nil {
-									errChan <- fmt.Errorf("failed to decode SSH URL %s: %w", project.Url, err)
-									return
-								}
 
-								path := filepath.Join(config.RootFolder, projectDecoded.GetPath())
+								path := filepath.Join(repository.DestRepoPath, project.GetPath())
 
 								if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 									err = backend.Git.Clone(

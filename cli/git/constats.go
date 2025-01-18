@@ -1,4 +1,4 @@
-package cli
+package git
 
 type conditionalOption string
 

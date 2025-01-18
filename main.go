@@ -1,8 +1,8 @@
 package main
 
 import (
+	"aww/cli"
 	"context"
-	"dusa/cli"
 	"os"
 
 	"github.com/rs/zerolog"

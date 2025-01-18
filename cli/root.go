@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"aww/cli/git"
+
 	"github.com/urfave/cli/v3"
 )
 
@@ -17,13 +19,13 @@ func New() *cli.Command {
 				Usage:       "sets log level to debug",
 				Sources:     cli.EnvVars("DEBUG"),
 				Value:       false,
-				Destination: &debug,
+				Destination: &git.Debug,
 			},
 		},
 	}
 
 	// Build the Commands
-	app.Commands = append(app.Commands, addGitCmd())
+	app.Commands = append(app.Commands, git.Command())
 
 	return app
 }

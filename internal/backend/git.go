@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"dusa/exec"
+	"aww/exec"
 )
 
 type Options struct {

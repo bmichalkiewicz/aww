@@ -1,5 +1,4 @@
-// Package config provides configuration management for a Go application.
-package config
+package repository
 
 import (
 	"errors"
@@ -16,14 +15,14 @@ var (
 	// HomeDirectory is the user's home directory.
 	HomeDirectory, _ = os.UserHomeDir()
 	// ConfigFilePath is the path to the configuration file.
-	ConfigFilePath = filepath.Join(HomeDirectory, ".brr", "repositories.yaml")
+	ConfigFilePath = filepath.Join(HomeDirectory, ".aww", "repositories.yaml")
 	// Main root folder
-	RootFolder = filepath.Join(HomeDirectory, "aww")
+	DestRepoPath = filepath.Join(HomeDirectory, "aww")
 )
 
 // LoadTemplate loads the template from the file.
-func Load() ([]GroupTemplate, error) {
-	template := []GroupTemplate{}
+func Load() ([]*Group, error) {
+	template := []*Group{}
 
 	templateFile, err := os.Open(ConfigFilePath)
 	if errors.Is(err, os.ErrNotExist) {
@@ -45,6 +44,17 @@ func Load() ([]GroupTemplate, error) {
 
 	if len(template) == 0 {
 		return nil, fmt.Errorf("no groups found")
+	}
+
+	for _, group := range template {
+		if len(group.Projects) != 0 {
+			for _, project := range group.Projects {
+				err := project.Decode()
+				if err != nil {
+					return nil, fmt.Errorf("error with decoding projects: %v", err)
+				}
+			}
+		}
 	}
 
 	return template, nil
