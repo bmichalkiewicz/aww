@@ -19,19 +19,19 @@ var (
 type Group struct {
 	Name     string     `yaml:"name"`
 	Skip     bool       `yaml:"skip"`
-	Commit   string     `yaml:"commit"`
-	Push     bool       `yaml:"push"`
-	Projects []*Project `yaml:"projects"`
+	Commit   string     `yaml:"commit,omitempty"`
+	Push     *bool      `yaml:"push,omitempty"`
+	Projects []*Project `yaml:"projects,omitempty"`
 }
 
 type Project struct {
 	Url    string `yaml:"url"`
-	Commit string `yaml:"commit"`
-	Push   bool   `yaml:"push"`
+	Commit string `yaml:"commit,omitempty"`
+	Push   *bool  `yaml:"push,omitempty"`
 
-	FQDN    string
-	Folders string
-	Path    string
+	FQDN    string `yaml:"-"`
+	Folders string `yaml:"-"`
+	Path    string `yaml:"-"`
 }
 
 func (p *Project) GetFQDN() string {

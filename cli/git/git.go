@@ -23,7 +23,7 @@ var (
 	groupsMap map[string]int
 )
 
-func start(cmd *cli.Command) error {
+func start() error {
 	var err error
 
 	if Debug {
@@ -35,6 +35,10 @@ func start(cmd *cli.Command) error {
 		return err
 	}
 
+	return nil
+}
+
+func overrideGroups(cmd *cli.Command) error {
 	groupsMap = make(map[string]int, len(groups))
 
 	for i, group := range groups {
@@ -69,20 +73,20 @@ func isExist(path string) (bool, error) {
 func Command() *cli.Command {
 	return &cli.Command{
 		Name:  "git",
-		Usage: "Manage and interact with git repositories",
+		Usage: "Perform git-related operations on groups and repositories",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "repo",
 				Aliases: []string{"r"},
-				Usage:   "Specify a single group name to operate on",
+				Usage:   "Operate only on the specified group name",
 			},
 		},
 		Commands: []*cli.Command{
 			{
 				Name:  "list",
-				Usage: "List available groups",
+				Usage: "Display a list of all available groups",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := start(cmd)
+					err := start()
 					if err != nil {
 						return err
 					}
@@ -98,16 +102,16 @@ func Command() *cli.Command {
 			},
 			{
 				Name:  "switch-branch",
-				Usage: "Switch branch",
+				Usage: "Switch to a specific branch for all repositories",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "branch",
-						Usage: "Specify a branch to switch",
+						Usage: "The branch to switch to",
 						Value: "default",
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := start(cmd)
+					err := start()
 					if err != nil {
 						return err
 					}
@@ -115,22 +119,13 @@ func Command() *cli.Command {
 					var parseRemote = true
 					var branch = cmd.String("branch")
 
-					// Initialize spinner manager
-					sm := ysmrr.NewSpinnerManager()
-
 					if cmd.String("branch") != "default" {
 						parseRemote = false
 					}
 
-					var combinedError error
-					var projectNoExist []string
-
-					sm.Start()
+					var combinedError []error
 
 					for _, group := range groups {
-
-						spinner := sm.AddSpinner(group.Name)
-						spinner.UpdateMessagef("%s: switching branches...", group.Name)
 
 						for _, project := range group.Projects {
 
@@ -138,7 +133,7 @@ func Command() *cli.Command {
 
 							ok, _ := isExist(path)
 							if !ok {
-								projectNoExist = append(projectNoExist, project.GetPath())
+								log.Warn().Str("path", path).Msg("Repository not found")
 								continue
 							}
 							var repoBranch string
@@ -148,15 +143,13 @@ func Command() *cli.Command {
 									Dir: path,
 								})
 								if err != nil {
-									spinner.ErrorWithMessagef("%s: failed", group.Name)
-									combinedError = fmt.Errorf("%v; failed to determine symbolic ref for repository %s: %w", combinedError, project.Url, err)
+									combinedError = append(combinedError, fmt.Errorf("failed to determine symbolic ref for repository %s: %w", project.Url, err))
 									continue
 								}
 
 								parts := strings.Split(strings.TrimSpace(info), "/")
 								if len(parts) == 0 {
-									spinner.ErrorWithMessagef("%s: failed", group.Name)
-									combinedError = fmt.Errorf("%v; unexpected symbolic ref format for repository %s: %s", combinedError, project.Url, info)
+									combinedError = append(combinedError, fmt.Errorf("unexpected symbolic ref format for repository %s: %s", project.Url, info))
 									continue
 								}
 								repoBranch = parts[len(parts)-1]
@@ -165,12 +158,11 @@ func Command() *cli.Command {
 							}
 
 							if repoBranch == "" {
-								spinner.ErrorWithMessagef("%s: failed", group.Name)
-								combinedError = fmt.Errorf("%v; branch name is empty for repository %s", combinedError, project.Url)
+								combinedError = append(combinedError, fmt.Errorf("branch name is empty for repository %s", project.Url))
 								continue
 							}
 
-							log.Debug().Msgf("Switching to branch '%s' in repository '%s'", repoBranch, project.Url)
+							log.Debug().Str("branch", repoBranch).Str("repo", project.Url).Msg("Switching branch")
 
 							// Checkout branch
 							err = backend.Git.Checkout(&backend.Options{
@@ -178,23 +170,14 @@ func Command() *cli.Command {
 								Branch: repoBranch,
 							})
 							if err != nil {
-								spinner.ErrorWithMessagef("%s: failed", group.Name)
-								combinedError = fmt.Errorf("%v; failed to checkout branch %s in repository %s: %w", combinedError, repoBranch, project.Url, err)
+								combinedError = append(combinedError, fmt.Errorf("failed to checkout branch %s in repository %s: %w", repoBranch, project.Url, err))
 								continue
 							}
 						}
-
-						spinner.CompleteWithMessagef("%s: done", group.Name)
 					}
 
-					sm.Stop()
-
-					if combinedError != nil {
-						return combinedError
-					}
-
-					if len(projectNoExist) != 0 {
-						log.Warn().Msg("List of project that are not found:\n " + strings.Join(projectNoExist, "\n"))
+					if len(combinedError) > 0 {
+						return errors.Join(combinedError...)
 					}
 
 					log.Info().Msg("Switching branches finished ✅")
@@ -203,15 +186,15 @@ func Command() *cli.Command {
 			},
 			{
 				Name:  "find",
-				Usage: "Find repositories that meet a given condition",
+				Usage: "Find repositories based on specific conditions",
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
 						Name:  "empty",
-						Usage: "Find empty repositories",
+						Usage: "Identify repositories that are empty",
 					},
 					&cli.BoolFlag{
 						Name:  "uncommitted",
-						Usage: "Find repositories with uncommitted changes",
+						Usage: "Locate repositories with uncommitted changes",
 					},
 					&cli.BoolFlag{
 						Name:  "unpushed",
@@ -219,7 +202,7 @@ func Command() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := start(cmd)
+					err := start()
 					if err != nil {
 						return err
 					}
@@ -245,7 +228,8 @@ func Command() *cli.Command {
 								return err
 							}
 							if !ok {
-								return fmt.Errorf("repository %q doesn't exists or empty, please repeat cloning", path)
+								log.Warn().Str("path", path).Msg("Repository not found")
+								continue
 							}
 
 							switch condition {
@@ -292,16 +276,9 @@ func Command() *cli.Command {
 			},
 			{
 				Name:  "clone",
-				Usage: "Clone repositories based on group configurations",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "repo",
-						Aliases: []string{"r"},
-						Usage:   "Specify a single group name to operate on",
-					},
-				},
+				Usage: "Clone all repositories for the specified groups",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					err := start(cmd)
+					err := start()
 					if err != nil {
 						return err
 					}
@@ -310,10 +287,11 @@ func Command() *cli.Command {
 					sm := ysmrr.NewSpinnerManager()
 
 					var wg sync.WaitGroup
-					errChan := make(chan error, len(groups))
+					var combinedError []error
 
 					for _, group := range groups {
 						if len(group.Projects) == 0 {
+							log.Warn().Str("group", group.Name).Msg("Doesn't have any projects")
 							continue
 						}
 
@@ -327,7 +305,6 @@ func Command() *cli.Command {
 							defer spinner.CompleteWithMessage(group.Name + " done!")
 
 							for _, project := range group.Projects {
-
 								path := filepath.Join(repository.DestRepoPath, project.GetPath())
 
 								if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
@@ -338,8 +315,8 @@ func Command() *cli.Command {
 										},
 									)
 									if err != nil {
-										errChan <- fmt.Errorf("failed to clone repository %s: %w", project.Url, err)
-										return
+										combinedError = append(combinedError, fmt.Errorf("failed to clone repository %s: %w", project.Url, err))
+										continue
 									}
 								}
 							}
@@ -349,26 +326,16 @@ func Command() *cli.Command {
 					sm.Start()
 					wg.Wait()
 					sm.Stop()
-					close(errChan)
 
-					// Collect and handle errors
-					var combinedError error
-					for err := range errChan {
-						if combinedError == nil {
-							combinedError = err
-						} else {
-							combinedError = fmt.Errorf("%v; %w", combinedError, err)
-						}
-					}
-
-					if combinedError != nil {
-						return combinedError
+					if len(combinedError) > 0 {
+						return errors.Join(combinedError...)
 					}
 
 					log.Info().Msg("Cloning finished ✅")
 					return nil
 				},
 			},
+			actionsCmd(),
 		},
 	}
 }
