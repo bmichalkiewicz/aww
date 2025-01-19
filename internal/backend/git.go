@@ -23,6 +23,7 @@ type GitBackend struct {
 	Cherry      func(options *Options) (output string, err error)
 	Push        func(options *Options) error
 	Commit      func(options *Options) error
+	Add         func(options *Options) error
 	Pull        func(options *Options) error
 	Checkout    func(options *Options) error
 	SymbolicRef func(options *Options) (output string, err error)
@@ -84,6 +85,13 @@ var Git = &GitBackend{
 		}
 
 		args := []string{"commit", "-m", options.CommitMsg}
+		_, err := exec.Run.Default().Silent().Go("git", args...)
+		return err
+	},
+
+	// Add add changes
+	Add: func(options *Options) error {
+		args := []string{"add", "."}
 		_, err := exec.Run.Default().Silent().Go("git", args...)
 		return err
 	},

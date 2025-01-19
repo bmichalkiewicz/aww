@@ -140,6 +140,12 @@ func runActions(group *repository.Group, project *repository.Project, projectPat
 
 		// Perform commit
 		log.Debug().Str("path", projectPath).Str("message", commitMsg).Msg("Performing commit...")
+		err = backend.Git.Add(&backend.Options{
+			Dir: projectPath,
+		})
+		if err != nil {
+			return fmt.Errorf("add failed for %s: %w", projectPath, err)
+		}
 		err = backend.Git.Commit(&backend.Options{
 			Dir:       projectPath,
 			CommitMsg: commitMsg,
