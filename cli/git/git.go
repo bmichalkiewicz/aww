@@ -96,13 +96,13 @@ func Command() *cli.Command {
 						builder = append(builder, group.Name)
 					}
 
-					fmt.Println(strings.Join(builder, "\n"))
+					log.Info().Msgf("List of all available groups:\n%s", strings.Join(builder, "\n"))
 					return nil
 				},
 			},
 			{
 				Name:  "switch-branch",
-				Usage: "Switch to a specific branch for all repositories",
+				Usage: "Switch to a specific branch for all repositories, 'defaults' corresponding to git strategy (main for trunk and develop for gitflow)",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "branch",
@@ -116,68 +116,47 @@ func Command() *cli.Command {
 						return err
 					}
 
-					var parseRemote = true
-					var branch = cmd.String("branch")
+					branch := cmd.String("branch")
+					parseRemote := branch == "default"
 
-					if cmd.String("branch") != "default" {
-						parseRemote = false
-					}
+					err = processGroupsAndProjects(func(group *repository.Group, project *repository.Project, projectPath string) error {
+						var repoBranch string
 
-					var combinedError []error
-
-					for _, group := range groups {
-
-						for _, project := range group.Projects {
-
-							path := filepath.Join(repository.DestRepoPath, project.GetPath())
-
-							ok, _ := isExist(path)
-							if !ok {
-								log.Warn().Str("path", path).Msg("Repository not found")
-								continue
-							}
-							var repoBranch string
-
-							if parseRemote {
-								info, err := backend.Git.SymbolicRef(&backend.Options{
-									Dir: path,
-								})
-								if err != nil {
-									combinedError = append(combinedError, fmt.Errorf("failed to determine symbolic ref for repository %s: %w", project.Url, err))
-									continue
-								}
-
-								parts := strings.Split(strings.TrimSpace(info), "/")
-								if len(parts) == 0 {
-									combinedError = append(combinedError, fmt.Errorf("unexpected symbolic ref format for repository %s: %s", project.Url, info))
-									continue
-								}
-								repoBranch = parts[len(parts)-1]
-							} else {
-								repoBranch = branch
-							}
-
-							if repoBranch == "" {
-								combinedError = append(combinedError, fmt.Errorf("branch name is empty for repository %s", project.Url))
-								continue
-							}
-
-							log.Debug().Str("branch", repoBranch).Str("repo", project.Url).Msg("Switching branch")
-
-							// Checkout branch
-							err = backend.Git.Checkout(&backend.Options{
-								Dir:    path,
-								Branch: repoBranch,
-							})
+						if parseRemote {
+							info, err := backend.Git.SymbolicRef(&backend.Options{Dir: projectPath})
 							if err != nil {
-								combinedError = append(combinedError, fmt.Errorf("failed to checkout branch %s in repository %s: %w", repoBranch, project.Url, err))
-								continue
+								return fmt.Errorf("failed to determine symbolic ref for repository %s: %w", project.Url, err)
 							}
-						}
-					}
 
-					if len(combinedError) > 0 {
-						return errors.Join(combinedError...)
+							parts := strings.Split(strings.TrimSpace(info), "/")
+							if len(parts) == 0 {
+								return fmt.Errorf("unexpected symbolic ref format for repository %s: %s", project.Url, info)
+							}
+							repoBranch = parts[len(parts)-1]
+						} else {
+							repoBranch = branch
+						}
+
+						if repoBranch == "" {
+							return fmt.Errorf("branch name is empty for repository %s", project.Url)
+						}
+
+						log.Debug().Str("branch", repoBranch).Str("repo", project.Url).Msg("Switching branch")
+
+						// Checkout branch
+						err := backend.Git.Checkout(&backend.Options{
+							Dir:    projectPath,
+							Branch: repoBranch,
+						})
+						if err != nil {
+							return fmt.Errorf("failed to checkout branch %s in repository %s: %w", repoBranch, project.Url, err)
+						}
+
+						return nil
+					})
+
+					if err != nil {
+						return err
 					}
 
 					log.Info().Msg("Switching branches finished ✅")
@@ -207,7 +186,7 @@ func Command() *cli.Command {
 						return err
 					}
 
-					// Determine which conditional option is selected
+					// Determine the condition
 					var condition conditionalOption
 					if cmd.Bool("empty") {
 						condition = Empty
@@ -219,57 +198,49 @@ func Command() *cli.Command {
 						return fmt.Errorf("please specify a condition: --empty, --uncommitted, or --unpushed")
 					}
 
-					for _, group := range groups {
-						for _, project := range group.Projects {
-							path := filepath.Join(repository.DestRepoPath, project.GetPath())
-
-							ok, err := isExist(path)
+					err = processGroupsAndProjects(func(group *repository.Group, project *repository.Project, projectPath string) error {
+						switch condition {
+						case Empty:
+							// Check if the repository is empty
+							files, err := os.ReadDir(projectPath)
 							if err != nil {
-								return err
+								return fmt.Errorf("failed to read directory %s: %w", projectPath, err)
 							}
-							if !ok {
-								log.Warn().Str("path", path).Msg("Repository not found")
-								continue
+							ok, err := isExist(filepath.Join(projectPath, ".git"))
+							if err != nil {
+								return fmt.Errorf("failed to check .git folder for %s: %w", projectPath, err)
+							}
+							if ok && len(files) == 1 {
+								fmt.Println(projectPath)
 							}
 
-							switch condition {
-							case Empty:
-								files, err := os.ReadDir(path)
-								if err != nil {
-									return err
-								}
-								ok, err := isExist(filepath.Join(path, ".git"))
-								if err != nil {
-									return err
-								}
-								if ok && len(files) == 1 {
-									fmt.Println(path)
-								}
-							case Uncommitted:
-								status, err := backend.Git.Status(true, &backend.Options{
-									Dir: path,
-								})
-								if err != nil {
-									return err
-								}
+						case Uncommitted:
+							// Check for uncommitted changes
+							ok, err := ifUncomitted(projectPath)
+							if err != nil {
+								return fmt.Errorf("failed to check uncommitted changes for %s: %w", projectPath, err)
+							}
+							if ok {
+								fmt.Println(projectPath)
+							}
 
-								if status != "" {
-									fmt.Println(path)
-								}
-
-							case Unpushed:
-								unpushed, err := backend.Git.Cherry(&backend.Options{
-									Dir: path,
-								})
-								if err != nil {
-									return err
-								}
-								if unpushed != "" {
-									fmt.Println(path)
-								}
+						case Unpushed:
+							// Check for unpushed commits
+							ok, err := ifUnpushed(projectPath)
+							if err != nil {
+								return fmt.Errorf("failed to check unpushed commits for %s: %w", projectPath, err)
+							}
+							if ok {
+								fmt.Println(projectPath)
 							}
 						}
+						return nil
+					})
+
+					if err != nil {
+						return err
 					}
+
 					log.Info().Msg("Searching finished ✅")
 					return nil
 				},
@@ -285,48 +256,59 @@ func Command() *cli.Command {
 
 					// Initialize spinner manager
 					sm := ysmrr.NewSpinnerManager()
+					sm.Start()
+					defer sm.Stop()
 
 					var wg sync.WaitGroup
+					var mu sync.Mutex
 					var combinedError []error
 
 					for _, group := range groups {
-						if len(group.Projects) == 0 {
-							log.Warn().Str("group", group.Name).Msg("Doesn't have any projects")
-							continue
-						}
-
-						// Add a spinner for each group
-						spinner := sm.AddSpinner(group.Name)
 						wg.Add(1)
 
-						go func(group *repository.Group, spinner *ysmrr.Spinner) {
-							spinner.UpdateMessage(group.Name + " processing...")
+						go func(group *repository.Group) {
 							defer wg.Done()
-							defer spinner.CompleteWithMessage(group.Name + " done!")
+
+							// Add a spinner for the group
+							spinner := sm.AddSpinner(group.Name)
+							spinner.UpdateMessagef("[%s] processing...", group.Name)
+
+							if len(group.Projects) == 0 {
+								spinner.ErrorWithMessagef("[%s] no projects found", group.Name)
+								log.Warn().Str("group", group.Name).Msg("Doesn't contain any projects")
+
+								return
+							}
 
 							for _, project := range group.Projects {
-								path := filepath.Join(repository.DestRepoPath, project.GetPath())
+								projectPath := filepath.Join(repository.DestRepoPath, project.GetPath())
 
-								if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-									err = backend.Git.Clone(
-										&backend.Options{
-											Url: project.Url,
-											Dir: path,
-										},
-									)
-									if err != nil {
-										combinedError = append(combinedError, fmt.Errorf("failed to clone repository %s: %w", project.Url, err))
-										continue
-									}
+								// Check if repository already exists
+								if _, err := os.Stat(projectPath); !errors.Is(err, os.ErrNotExist) {
+									continue
+								}
+
+								// Clone the repository
+								err := backend.Git.Clone(&backend.Options{
+									Url: project.Url,
+									Dir: projectPath,
+								})
+								if err != nil {
+									mu.Lock()
+									combinedError = append(combinedError, fmt.Errorf("failed to clone repository %s: %w", project.Url, err))
+									mu.Unlock()
+									continue
 								}
 							}
-						}(group, spinner)
+
+							spinner.CompleteWithMessagef("[%s] done!", group.Name)
+						}(group)
 					}
 
-					sm.Start()
+					// Wait for all goroutines to complete
 					wg.Wait()
-					sm.Stop()
 
+					// Handle errors
 					if len(combinedError) > 0 {
 						return errors.Join(combinedError...)
 					}

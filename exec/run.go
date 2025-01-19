@@ -11,7 +11,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var Run = &Runner{}
+// New returns Runner with default settings
+func New() *Runner {
+	return &Runner{
+		silent: false,
+		output: false,
+	}
+}
 
 type Runner struct {
 	dir    string
@@ -39,14 +45,6 @@ func (r *Runner) Output() *Runner {
 // Dir sets the working directory for the runner and returns the runner.
 func (r *Runner) Dir(path string) *Runner {
 	r.dir = path
-	return r
-}
-
-// Default resets the runner to its default state and returns the runner.
-func (r *Runner) Default() *Runner {
-	r.dir = ""
-	r.silent = false
-	r.output = false
 	return r
 }
 

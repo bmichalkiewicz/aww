@@ -47,7 +47,7 @@ var Git = &GitBackend{
 
 		args = append(args, options.Url, options.Dir)
 
-		_, err = exec.Run.Silent().Go("git", args...)
+		_, err = exec.New().Silent().Go("git", args...)
 		return err
 	},
 
@@ -57,14 +57,14 @@ var Git = &GitBackend{
 		if short {
 			args = append(args, "-s")
 		}
-		return exec.Run.Default().Silent().Output().Dir(options.Dir).Go("git", args...)
+		return exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
 	},
 
 	// Cherry verify if repository has a unpushed commits
 	Cherry: func(options *Options) (output string, err error) {
 		args := []string{"cherry", "-v"}
 
-		output, err = exec.Run.Default().Silent().Output().Dir(options.Dir).Go("git", args...)
+		output, err = exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
 		return output, err
 	},
 
@@ -74,7 +74,7 @@ var Git = &GitBackend{
 		if options.Branch != "" {
 			args = append(args, options.Branch)
 		}
-		_, err := exec.Run.Default().Silent().Go("git", args...)
+		_, err := exec.New().Dir(options.Dir).Silent().Go("git", args...)
 		return err
 	},
 
@@ -85,14 +85,14 @@ var Git = &GitBackend{
 		}
 
 		args := []string{"commit", "-m", options.CommitMsg}
-		_, err := exec.Run.Default().Silent().Go("git", args...)
+		_, err := exec.New().Dir(options.Dir).Silent().Go("git", args...)
 		return err
 	},
 
 	// Add add changes
 	Add: func(options *Options) error {
 		args := []string{"add", "."}
-		_, err := exec.Run.Default().Go("git", args...)
+		_, err := exec.New().Dir(options.Dir).Silent().Go("git", args...)
 		return err
 	},
 
@@ -102,14 +102,13 @@ var Git = &GitBackend{
 		if options.Branch != "" {
 			args = append(args, options.Branch)
 		}
-		_, err := exec.Run.Default().Silent().Go("git", args...)
+		_, err := exec.New().Dir(options.Dir).Silent().Go("git", args...)
 		return err
 	},
-
 	Checkout: func(options *Options) error {
 		args := []string{"checkout", options.Branch}
 
-		_, err := exec.Run.Default().Silent().Dir(options.Dir).Go("git", args...)
+		_, err := exec.New().Dir(options.Dir).Silent().Go("git", args...)
 		return err
 	},
 
@@ -117,7 +116,7 @@ var Git = &GitBackend{
 	SymbolicRef: func(options *Options) (output string, err error) {
 		args := []string{"symbolic-ref", "refs/remotes/origin/HEAD"}
 
-		output, err = exec.Run.Default().Silent().Output().Dir(options.Dir).Go("git", args...)
+		output, err = exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
 		return output, err
 	},
 }

@@ -114,9 +114,9 @@ func runActions(group *repository.Group, project *repository.Project, projectPat
 
 	performPush := false
 	if project.Push != nil {
-		performPush = *project.Push // Use the value of project.Push
+		performPush = *project.Push
 	} else if group.Push != nil {
-		performPush = *group.Push // Use the group.Push as fallback
+		performPush = *group.Push
 	}
 
 	performCommit := commitMsg != ""
@@ -128,12 +128,12 @@ func runActions(group *repository.Group, project *repository.Project, projectPat
 
 	if performCommit {
 		// Check for changes
-		status, err := backend.Git.Status(true, &backend.Options{Dir: projectPath})
+		ok, err := ifUncomitted(projectPath)
 		if err != nil {
-			return fmt.Errorf("failed to get status for %s: %w", projectPath, err)
+			return fmt.Errorf("checking if uncommited failed for %s: %w", projectPath, err)
 		}
 
-		if status == "" {
+		if !ok {
 			log.Warn().Str("path", projectPath).Msg("No changes found. Skipping commit...")
 			return nil
 		}
@@ -146,7 +146,7 @@ func runActions(group *repository.Group, project *repository.Project, projectPat
 		if err != nil {
 			return fmt.Errorf("add failed for %s: %w", projectPath, err)
 		}
-		fmt.Println("lol")
+
 		err = backend.Git.Commit(&backend.Options{
 			Dir:       projectPath,
 			CommitMsg: commitMsg,
@@ -154,13 +154,21 @@ func runActions(group *repository.Group, project *repository.Project, projectPat
 		if err != nil {
 			return fmt.Errorf("commit failed for %s: %w", projectPath, err)
 		}
-		log.Info().Str("path", projectPath).Msg("Commit successful")
+		log.Info().Str("path", projectPath).Str("commitMsg", commitMsg).Msg("Commit successful")
 	}
 
 	if performPush {
 		// Perform push
 		log.Debug().Str("path", projectPath).Msg("Performing push...")
-		err := backend.Git.Push(&backend.Options{Dir: projectPath})
+		ok, err := ifUnpushed(projectPath)
+		if err != nil {
+			return fmt.Errorf("push failed for %s: %w", projectPath, err)
+		}
+		if !ok {
+			log.Info().Str("path", projectPath).Msg("No commits to push found")
+			return nil
+		}
+		err = backend.Git.Push(&backend.Options{Dir: projectPath})
 		if err != nil {
 			return fmt.Errorf("push failed for %s: %w", projectPath, err)
 		}
