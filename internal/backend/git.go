@@ -92,7 +92,7 @@ var Git = &GitBackend{
 	// Add add changes
 	Add: func(options *Options) error {
 		args := []string{"add", "."}
-		_, err := exec.Run.Default().Silent().Go("git", args...)
+		_, err := exec.Run.Default().Go("git", args...)
 		return err
 	},
 
