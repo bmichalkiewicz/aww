@@ -134,13 +134,13 @@ func runActions(group *repository.Group, project *repository.Project, projectPat
 		}
 
 		if status == "" {
-			fmt.Println("lol")
 			log.Warn().Str("path", projectPath).Msg("No changes found. Skipping commit...")
 			return nil
 		}
 
 		// Perform commit
 		log.Debug().Str("path", projectPath).Str("message", commitMsg).Msg("Performing commit...")
+		fmt.Println("lol")
 		err = backend.Git.Add(&backend.Options{
 			Dir: projectPath,
 		})
