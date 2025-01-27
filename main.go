@@ -1,33 +1,18 @@
 package main
 
 import (
-	"aww/cli"
+	"aww/cmd"
 	"aww/internal/repository"
 	"context"
-	"errors"
-	"fmt"
 	"os"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/urfave/cli/v3"
 )
 
-// CreateTemplate creates or updates the template file.
-func repositoryPathExists(path string) error {
-
-	// Ensure path directory exists
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(path, 0755); err != nil {
-			return fmt.Errorf("error creating config directory: %w", err)
-		}
-
-		return nil
-	}
-	return nil
-}
-
 func main() {
-	repositoryPathExists(repository.RepositoryPath)
+	repository.Init()
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out: os.Stdout,
@@ -36,10 +21,27 @@ func main() {
 	// Default level for this example is info, unless debug flag is present
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-	app := cli.New()
-
-	if err := app.Run(context.Background(), os.Args); err != nil {
-		log.Error().Msgf("error: %s", err.Error())
-		os.Exit(1)
+	app := &cli.Command{
+		Name:                  "aww",
+		EnableShellCompletion: true,
+		Usage:                 "Git repositories and token management",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:        "debug",
+				Usage:       "sets log level to debug",
+				Sources:     cli.EnvVars("DEBUG"),
+				Value:       false,
+				Destination: &cmd.Debug,
+			},
+		},
+		Commands: []*cli.Command{
+			cmd.Git(),
+		},
 	}
+
+	// Run the application
+	if err := app.Run(context.Background(), os.Args); err != nil {
+		log.Fatal().Err(err).Msg("Application encountered an error")
+	}
+
 }

@@ -48,17 +48,6 @@ func Load() ([]*Group, error) {
 		return nil, fmt.Errorf("no groups found")
 	}
 
-	for _, group := range template {
-		if len(group.Projects) != 0 {
-			for _, project := range group.Projects {
-				err := project.Decode()
-				if err != nil {
-					return nil, fmt.Errorf("error with decoding projects: %v", err)
-				}
-			}
-		}
-	}
-
 	return template, nil
 }
 
@@ -79,5 +68,16 @@ func Save(repositories []*Group) error {
 		return fmt.Errorf("error encoding template content: %w", err)
 	}
 
+	return nil
+}
+
+// Init checking if repository path is exists
+func Init() error {
+	if _, err := os.Stat(RepositoryPath); errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(RepositoryPath, 0755); err != nil {
+			return fmt.Errorf("error creating config directory: %w", err)
+		}
+		return nil
+	}
 	return nil
 }
