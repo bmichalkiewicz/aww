@@ -1,4 +1,4 @@
-package git
+package cmd
 
 import (
 	"aww/internal/backend"
@@ -12,65 +12,12 @@ import (
 	"sync"
 
 	"github.com/chelnak/ysmrr"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
 )
 
-var (
-	Debug     bool
-	groups    []*repository.Group
-	groupsMap map[string]int
-)
-
-func start() error {
-	var err error
-
-	if Debug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	}
-
-	groups, err = repository.Load()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func overrideGroups(cmd *cli.Command) error {
-	groupsMap = make(map[string]int, len(groups))
-
-	for i, group := range groups {
-		groupsMap[group.Name] = i
-	}
-
-	if cmd.String("repo") != "" {
-		groupIndex, exists := groupsMap[cmd.String("repo")]
-		if !exists {
-			return fmt.Errorf("group '%s' not found", cmd.String("repo"))
-		}
-		group := groups[groupIndex]
-		groups = []*repository.Group{group}
-	}
-
-	return nil
-}
-
-func isExist(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
-		}
-		return false, err
-	}
-
-	return true, nil
-}
-
 // Command creates a CLI command for git operations.
-func Command() *cli.Command {
+func Git() *cli.Command {
 	return &cli.Command{
 		Name:  "git",
 		Usage: "Perform git-related operations on groups and repositories",
@@ -119,46 +66,55 @@ func Command() *cli.Command {
 					branch := cmd.String("branch")
 					parseRemote := branch == "default"
 
-					err = processGroupsAndProjects(func(group *repository.Group, project *repository.Project, projectPath string) error {
-						var repoBranch string
-
-						if parseRemote {
-							info, err := backend.Git.SymbolicRef(&backend.Options{Dir: projectPath})
-							if err != nil {
-								return fmt.Errorf("failed to determine symbolic ref for repository %s: %w", project.Url, err)
-							}
-
-							parts := strings.Split(strings.TrimSpace(info), "/")
-							if len(parts) == 0 {
-								return fmt.Errorf("unexpected symbolic ref format for repository %s: %s", project.Url, info)
-							}
-							repoBranch = parts[len(parts)-1]
-						} else {
-							repoBranch = branch
-						}
-
-						if repoBranch == "" {
-							return fmt.Errorf("branch name is empty for repository %s", project.Url)
-						}
-
-						log.Debug().Str("branch", repoBranch).Str("repo", project.Url).Msg("Switching branch")
-
-						// Checkout branch
-						err := backend.Git.Checkout(&backend.Options{
-							Dir:    projectPath,
-							Branch: repoBranch,
-						})
-						if err != nil {
-							return fmt.Errorf("failed to checkout branch %s in repository %s: %w", repoBranch, project.Url, err)
-						}
-
-						return nil
-					})
-
+					err = overrideGroups(cmd)
 					if err != nil {
 						return err
 					}
 
+					for _, group := range groups {
+						if len(group.Projects) == 0 {
+							log.Warn().Str("group", group.Name).Msg("Doesn't contain any projects")
+							continue
+						}
+						// Execute the provided action
+						err = processProjects(group.Projects, func(project *repository.Project) error {
+							var repoBranch string
+
+							if parseRemote {
+								info, err := backend.Git.SymbolicRef(&backend.Options{Dir: project.GetPath()})
+								if err != nil {
+									return fmt.Errorf("failed to determine symbolic ref for repository %s: %w", project.Url, err)
+								}
+
+								parts := strings.Split(strings.TrimSpace(info), "/")
+								if len(parts) == 0 {
+									return fmt.Errorf("unexpected symbolic ref format for repository %s: %s", project.Url, info)
+								}
+								repoBranch = parts[len(parts)-1]
+							} else {
+								repoBranch = branch
+							}
+
+							if repoBranch == "" {
+								return fmt.Errorf("branch name is empty for repository %s", project.Url)
+							}
+
+							log.Debug().Str("branch", repoBranch).Str("repo", project.Url).Msg("Switching branch")
+
+							// Checkout branch
+							err := backend.Git.Checkout(&backend.Options{
+								Dir:    project.GetPath(),
+								Branch: repoBranch,
+							})
+							if err != nil {
+								return fmt.Errorf("failed to checkout branch %s in repository %s: %w", repoBranch, project.Url, err)
+							}
+							return nil
+						})
+						if err != nil {
+							return err
+						}
+					}
 					log.Info().Msg("Switching branches finished ✅")
 					return nil
 				},
@@ -186,6 +142,11 @@ func Command() *cli.Command {
 						return err
 					}
 
+					err = overrideGroups(cmd)
+					if err != nil {
+						return err
+					}
+
 					// Determine the condition
 					var condition conditionalOption
 					if cmd.Bool("empty") {
@@ -198,47 +159,55 @@ func Command() *cli.Command {
 						return fmt.Errorf("please specify a condition: --empty, --uncommitted, or --unpushed")
 					}
 
-					err = processGroupsAndProjects(func(group *repository.Group, project *repository.Project, projectPath string) error {
-						switch condition {
-						case Empty:
-							// Check if the repository is empty
-							files, err := os.ReadDir(projectPath)
-							if err != nil {
-								return fmt.Errorf("failed to read directory %s: %w", projectPath, err)
-							}
-							ok, err := isExist(filepath.Join(projectPath, ".git"))
-							if err != nil {
-								return fmt.Errorf("failed to check .git folder for %s: %w", projectPath, err)
-							}
-							if ok && len(files) == 1 {
-								fmt.Println(projectPath)
-							}
-
-						case Uncommitted:
-							// Check for uncommitted changes
-							ok, err := ifUncomitted(projectPath)
-							if err != nil {
-								return fmt.Errorf("failed to check uncommitted changes for %s: %w", projectPath, err)
-							}
-							if ok {
-								fmt.Println(projectPath)
-							}
-
-						case Unpushed:
-							// Check for unpushed commits
-							ok, err := ifUnpushed(projectPath)
-							if err != nil {
-								return fmt.Errorf("failed to check unpushed commits for %s: %w", projectPath, err)
-							}
-							if ok {
-								fmt.Println(projectPath)
-							}
+					for _, group := range groups {
+						if len(group.Projects) == 0 {
+							log.Warn().Str("group", group.Name).Msg("Doesn't contain any projects")
+							continue
 						}
-						return nil
-					})
+						// Execute the provided action
+						err = processProjects(group.Projects, func(project *repository.Project) error {
+							projectPath := project.GetPath()
 
-					if err != nil {
-						return err
+							switch condition {
+							case Empty:
+								// Check if the repository is empty
+								files, err := os.ReadDir(project.GetPath())
+								if err != nil {
+									return fmt.Errorf("failed to read directory %s: %w", projectPath, err)
+								}
+								ok, err := isExist(filepath.Join(projectPath, ".git"))
+								if err != nil {
+									return fmt.Errorf("failed to check .git folder for %s: %w", projectPath, err)
+								}
+								if ok && len(files) == 1 {
+									fmt.Println(projectPath)
+								}
+
+							case Uncommitted:
+								// Check for uncommitted changes
+								ok, err := ifUncomitted(projectPath)
+								if err != nil {
+									return fmt.Errorf("failed to check uncommitted changes for %s: %w", projectPath, err)
+								}
+								if ok {
+									fmt.Println(projectPath)
+								}
+
+							case Unpushed:
+								// Check for unpushed commits
+								ok, err := ifUnpushed(projectPath)
+								if err != nil {
+									return fmt.Errorf("failed to check unpushed commits for %s: %w", projectPath, err)
+								}
+								if ok {
+									fmt.Println(projectPath)
+								}
+							}
+							return nil
+						})
+						if err != nil {
+							return err
+						}
 					}
 
 					log.Info().Msg("Searching finished ✅")
@@ -281,7 +250,11 @@ func Command() *cli.Command {
 							}
 
 							for _, project := range group.Projects {
-								projectPath := filepath.Join(repository.DestRepoPath, project.GetPath())
+								err := project.Decode()
+								if err != nil {
+									combinedError = append(combinedError, fmt.Errorf("problem with decoding project %s: %v", project.Url, err))
+								}
+								projectPath := project.GetPath()
 
 								// Check if repository already exists
 								if _, err := os.Stat(projectPath); !errors.Is(err, os.ErrNotExist) {
@@ -289,7 +262,7 @@ func Command() *cli.Command {
 								}
 
 								// Clone the repository
-								err := backend.Git.Clone(&backend.Options{
+								err = backend.Git.Clone(&backend.Options{
 									Url: project.Url,
 									Dir: projectPath,
 								})
@@ -317,7 +290,7 @@ func Command() *cli.Command {
 					return nil
 				},
 			},
-			actionsCmd(),
+			Actions(),
 		},
 	}
 }

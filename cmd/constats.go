@@ -1,4 +1,6 @@
-package git
+package cmd
+
+import "aww/internal/repository"
 
 type conditionalOption string
 
@@ -7,3 +9,5 @@ const (
 	Uncommitted conditionalOption = "uncommitted"
 	Unpushed    conditionalOption = "unpushed"
 )
+
+type projectAction func(project *repository.Project) error
