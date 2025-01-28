@@ -78,10 +78,11 @@ func Git() *cli.Command {
 						}
 						// Execute the provided action
 						err = processProjects(group.Projects, func(project *repository.Project) error {
+							projectPath := project.GetPath()
 							var repoBranch string
 
 							if parseRemote {
-								info, err := backend.Git.SymbolicRef(&backend.Options{Dir: project.GetPath()})
+								info, err := backend.Git.SymbolicRef(&backend.Options{Dir: projectPath})
 								if err != nil {
 									return fmt.Errorf("failed to determine symbolic ref for repository %s: %w", project.Url, err)
 								}
@@ -99,11 +100,11 @@ func Git() *cli.Command {
 								return fmt.Errorf("branch name is empty for repository %s", project.Url)
 							}
 
-							log.Debug().Str("branch", repoBranch).Str("repo", project.Url).Msg("Switching branch")
+							log.Info().Str("branch", repoBranch).Str("repo", project.Url).Msg("Switching branch")
 
 							// Checkout branch
 							err := backend.Git.Checkout(&backend.Options{
-								Dir:    project.GetPath(),
+								Dir:    projectPath,
 								Branch: repoBranch,
 							})
 							if err != nil {
@@ -209,8 +210,6 @@ func Git() *cli.Command {
 							return err
 						}
 					}
-
-					log.Info().Msg("Searching finished ✅")
 					return nil
 				},
 			},
@@ -285,8 +284,6 @@ func Git() *cli.Command {
 					if len(combinedError) > 0 {
 						return errors.Join(combinedError...)
 					}
-
-					log.Info().Msg("Cloning finished ✅")
 					return nil
 				},
 			},
