@@ -19,7 +19,7 @@ var (
 )
 
 // Utility function to process group projects
-func processProjects(projects []*repository.Project, action projectAction) error {
+func processProjects(projects []*repository.Project, groupActions *repository.GroupActions, action projectAction) error {
 	var combinedError []error
 
 	for _, project := range projects {
@@ -41,7 +41,7 @@ func processProjects(projects []*repository.Project, action projectAction) error
 		}
 
 		// Execute the custom handler
-		err = action(project)
+		err = action(project, groupActions)
 		if err != nil {
 			combinedError = append(combinedError, err)
 		}

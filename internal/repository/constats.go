@@ -12,21 +12,42 @@ import (
 var pattern = `^git@([a-zA-Z0-9.-]+):([a-zA-Z0-9_./-]+)\.git$`
 
 type Group struct {
-	Name     string     `yaml:"name"`
-	Skip     bool       `yaml:"skip"`
-	Commit   string     `yaml:"commit,omitempty"`
-	Push     *bool      `yaml:"push,omitempty"`
-	Projects []*Project `yaml:"projects,omitempty"`
+	Name     string        `yaml:"name"`
+	Actions  *GroupActions `yaml:"actions,omitempty"`
+	Projects []*Project    `yaml:"projects,omitempty"`
+}
+
+type GroupActions struct {
+	Skip   bool   `yaml:"skip"`
+	Commit string `yaml:"commit,omitempty"`
+	Push   *bool  `yaml:"push,omitempty"`
+}
+
+func (g *GroupActions) Reset() {
+	g.Commit = ""
+	g.Push = nil
+	g.Skip = false
 }
 
 type Project struct {
-	Url    string `yaml:"url"`
-	Commit string `yaml:"commit,omitempty"`
-	Push   *bool  `yaml:"push,omitempty"`
+	Url     string          `yaml:"url"`
+	Actions *ProjectActions `yaml:"actions,omitempty"`
 
 	FQDN    string `yaml:"-"`
 	Folders string `yaml:"-"`
 	Path    string `yaml:"-"`
+}
+
+type ProjectActions struct {
+	Skip   bool   `yaml:"skip"`
+	Commit string `yaml:"commit,omitempty"`
+	Push   *bool  `yaml:"push,omitempty"`
+}
+
+func (g *ProjectActions) Reset() {
+	g.Commit = ""
+	g.Push = nil
+	g.Skip = false
 }
 
 func (p *Project) GetFQDN() string {

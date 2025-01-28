@@ -77,7 +77,7 @@ func Git() *cli.Command {
 							continue
 						}
 						// Execute the provided action
-						err = processProjects(group.Projects, func(project *repository.Project) error {
+						err = processProjects(group.Projects, group.Actions, func(project *repository.Project, groupActions *repository.GroupActions) error {
 							projectPath := project.GetPath()
 							var repoBranch string
 
@@ -166,7 +166,7 @@ func Git() *cli.Command {
 							continue
 						}
 						// Execute the provided action
-						err = processProjects(group.Projects, func(project *repository.Project) error {
+						err = processProjects(group.Projects, group.Actions, func(project *repository.Project, groupActions *repository.GroupActions) error {
 							projectPath := project.GetPath()
 
 							switch condition {

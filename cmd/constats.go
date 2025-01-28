@@ -10,4 +10,4 @@ const (
 	Unpushed    conditionalOption = "unpushed"
 )
 
-type projectAction func(project *repository.Project) error
+type projectAction func(project *repository.Project, groupAction *repository.GroupActions) error
