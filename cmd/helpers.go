@@ -102,7 +102,8 @@ func isExist(path string) (bool, error) {
 
 func ifUnpushed(projectPath string) (bool, error) {
 	unpushed, err := backend.Git.Cherry(&backend.Options{
-		Dir: projectPath,
+		Dir:            projectPath,
+		AdditionalArgs: []string{"-v"},
 	})
 	if err != nil {
 		return false, err
@@ -115,8 +116,9 @@ func ifUnpushed(projectPath string) (bool, error) {
 }
 
 func ifUncomitted(projectPath string) (bool, error) {
-	status, err := backend.Git.Status(true, &backend.Options{
-		Dir: projectPath,
+	status, err := backend.Git.Status(&backend.Options{
+		Dir:            projectPath,
+		AdditionalArgs: []string{"-s"},
 	})
 	if err != nil {
 		return false, err

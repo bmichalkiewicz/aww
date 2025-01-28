@@ -9,23 +9,25 @@ import (
 )
 
 type Options struct {
-	Url       string
-	Dir       string
-	Branch    string
-	CommitMsg string // For commit message
-	Remote    string // For push/pull remote
+	Url            string
+	Dir            string
+	Branch         string
+	CommitMsg      string // For commit message
+	Remote         string // For push/pull remote
+	AdditionalArgs []string
 }
 
 // GitBackend defines common git operations
 type GitBackend struct {
 	Clone       func(*Options) error
-	Status      func(short bool, options *Options) (output string, err error)
+	Status      func(options *Options) (output string, err error)
 	Cherry      func(options *Options) (output string, err error)
 	Push        func(options *Options) error
 	Commit      func(options *Options) error
 	Add         func(options *Options) error
 	Pull        func(options *Options) error
 	Checkout    func(options *Options) error
+	Branch      func(options *Options) (output string, err error)
 	SymbolicRef func(options *Options) (output string, err error)
 }
 
@@ -51,21 +53,20 @@ var Git = &GitBackend{
 		return err
 	},
 
-	// Status retrieves git status with optional short format
-	Status: func(short bool, options *Options) (output string, err error) {
+	// Status retrieves git status
+	Status: func(options *Options) (output string, err error) {
 		args := []string{"status"}
-		if short {
-			args = append(args, "-s")
-		}
+		args = append(args, options.AdditionalArgs...)
+
 		return exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
 	},
 
 	// Cherry verify if repository has a unpushed commits
 	Cherry: func(options *Options) (output string, err error) {
-		args := []string{"cherry", "-v"}
+		args := []string{"cherry"}
+		args = append(args, options.AdditionalArgs...)
 
-		output, err = exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
-		return output, err
+		return exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
 	},
 
 	// Push pushes the local branch to the remote
@@ -111,12 +112,17 @@ var Git = &GitBackend{
 		_, err := exec.New().Dir(options.Dir).Silent().Go("git", args...)
 		return err
 	},
+	Branch: func(options *Options) (output string, err error) {
+		args := []string{"branch"}
+		args = append(args, options.AdditionalArgs...)
+
+		return exec.New().Dir(options.Dir).Silent().Go("git", args...)
+	},
 
 	// SymbolicRef shows information about remote repository (default branch etc.)
 	SymbolicRef: func(options *Options) (output string, err error) {
 		args := []string{"symbolic-ref", "refs/remotes/origin/HEAD"}
 
-		output, err = exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
-		return output, err
+		return exec.New().Dir(options.Dir).Silent().Output().Go("git", args...)
 	},
 }
