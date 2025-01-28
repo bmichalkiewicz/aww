@@ -1,4 +1,4 @@
-# aww CLI Tool
+# aww
 
 ![aww Logo](assets/logo.png)
 
@@ -17,16 +17,21 @@
 
 ```yaml
 - name: <group_name>
-  skip: <true|false> # action
-  commit: <string> # action
-  push: <true|false> # action
+  actions:
+    skip: <true|false>
+    commit: <string>
+    push: <true|false>
   projects:
     - url: <project_name_1>
-      commit: <string> # action
-      push: <true|false> # action
+      actions:
+        skip: <true|false>
+        commit: <string>
+        push: <true|false>
     - url: <project_name_2>
-      commit: <string> # action
-      push: <true|false> # action
+      actions:
+        skip: <true|false>
+        commit: <string>
+        push: <true|false>
 ```
 
 if you want to clean repositories file after doing actions, just do
